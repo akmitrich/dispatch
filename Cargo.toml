@@ -1,0 +1,16 @@
+[package]
+name = "dispatch"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = "1.40.0"
+tokio-tungstenite = "0.24.0"
+
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
+
+[[bin]]
+name = "client"
+path = "src/bin/client.rs"
