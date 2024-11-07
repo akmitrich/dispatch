@@ -1,27 +1,28 @@
 use futures_util::{SinkExt, StreamExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{net::TcpListener, sync::broadcast};
 use tokio_tungstenite::accept_async;
-
-async fn handler(stream: TcpStream) {
-    let ws_stream = accept_async(stream)
-        .await
-        .expect("error during websocket handshake");
-    let (mut sender, mut reader) = ws_stream.split();
-    while let Some(msg) = reader.next().await {
-        let msg = msg.expect("failed read message");
-        if msg.is_text() {
-            print!("{}", msg);
-            sender.send(msg).await.expect("failed send message");
-        }
-    }
-}
 
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("localhost:8080")
         .await
         .expect("failed bind");
-    while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handler(stream));
+    let (tx, _) = broadcast::channel(100);
+    while let Ok((socket, _)) = listener.accept().await {
+        let tx = tx.clone();
+        let mut rx = tx.subscribe();
+        tokio::spawn(async move {
+            let ws_stream = accept_async(socket).await.expect("failed accept");
+            let (mut ws_tx, mut ws_rx) = ws_stream.split();
+            let transmiter = tokio::spawn(async move {
+                while let Ok(msg) = rx.recv().await {
+                    ws_tx.send(msg).await.expect("falied send to client");
+                }
+            });
+            while let Some(Ok(msg)) = ws_rx.next().await {
+                tx.send(msg).expect("failed send to channel");
+            }
+            transmiter.abort();
+        });
     }
 }
