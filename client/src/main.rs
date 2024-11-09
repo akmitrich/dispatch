@@ -1,3 +1,4 @@
+use std::io::Write;
 use futures_util::stream::SplitStream;
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
@@ -13,21 +14,20 @@ async fn main() {
     let (mut tx, rx) = ws_stream.split();
     tokio::spawn(handler(rx));
     loop {
-        tx.send(Message::from(readline()))
+        tx.send(Message::from(input("")))
             .await
             .expect("failed send");
     }
 }
 
-fn readline() -> String {
+fn input(prompt: &str) -> String {
+    print!("{}", prompt);
+    std::io::stdout().flush().expect("failed flush");
     let mut input = String::new();
     std::io::stdin()
         .read_line(&mut input)
-        .expect("falied readline");
-    input
-        .strip_suffix("\r\n")
-        .or(input.strip_suffix("\n"))
-        .expect("failed readline").to_string()
+        .expect("falied read line");
+    input.trim().to_string()
 }
 
 async fn handler(mut rx: Receiver) {
