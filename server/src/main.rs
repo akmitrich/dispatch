@@ -1,7 +1,7 @@
-mod pool;
+mod connection;
 
 use futures_util::{SinkExt, StreamExt};
-use pool::{Connection, Pool, SocketReciver, SocketSender};
+use connection::{Connection, Pool, SocketReciver, SocketSender};
 use std::collections::HashMap;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, RwLock};
@@ -22,21 +22,21 @@ async fn main() {
 async fn handler(pool: Pool, socket: TcpStream) {
     let ws_stream = accept_async(socket).await.expect("socket: failed accept");
     let (ws_tx, mut ws_rx) = ws_stream.split();
-    let (connection, sender) = authorization(
+    let (connection, sender_aborthandle) = authorization(
         ws_tx,
         &mut ws_rx
     ).await.expect("handler: failed authorization");
     pool.write().await.insert(connection.id(), connection.clone());
-    let msg = format!("{} joined", connection.username());
-    pool::send_all(pool.clone(), msg).await;
+    let msg = format!("{} \x1b[32mjoined\x1B[0m", connection.username());
+    Connection::send_all(pool.clone(), msg).await;
     while let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
         let msg = format!("{}: {}", connection.username(), msg);
-        pool::send_all(pool.clone(), msg).await;
+        Connection::send_all(pool.clone(), msg).await;
     }
     pool.write().await.remove(&connection.id());
-    sender.abort();
-    let msg = format!("{} logout", connection.username());
-    pool::send_all(pool.clone(), msg).await;
+    sender_aborthandle.abort();
+    let msg = format!("{} \x1b[31mlogout\x1B[0m", connection.username());
+    Connection::send_all(pool.clone(), msg).await;
 }
 
 async fn authorization(

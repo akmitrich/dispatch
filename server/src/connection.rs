@@ -31,13 +31,12 @@ impl Connection {
     pub fn id(&self) -> Uuid { self.id }
     pub fn username(&self) -> String { self.username.clone() }
     pub fn channel_sender(&self) -> ChannelSender { self.channel_sender.clone()  } 
-}
-
-pub async fn send_all(pool: Pool, msg: String) {
-    for connection in pool.read().await.values() {
-        connection
-            .channel_sender()
-            .send(msg.clone())
-            .expect("failed send to channel");
+    pub async fn send_all(pool: Pool, msg: String) {
+        for connection in pool.read().await.values() {
+            connection
+                .channel_sender()
+                .send(msg.clone())
+                .expect("failed send to channel");
+        }
     }
 }
