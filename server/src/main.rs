@@ -27,7 +27,7 @@ async fn handler(pool: Pool, socket: TcpStream) {
         &mut ws_rx
     ).await.expect("handler: failed authorization");
     pool.write().await.insert(connection.id(), connection.clone());
-    let msg = format!("{} \x1b[32mjoined\x1B[0m", connection.username());
+    let msg = format!("{} joined", connection.username());
     Connection::send_all(pool.clone(), msg).await;
     while let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
         let msg = format!("{}: {}", connection.username(), msg);
@@ -35,7 +35,7 @@ async fn handler(pool: Pool, socket: TcpStream) {
     }
     pool.write().await.remove(&connection.id());
     sender_aborthandle.abort();
-    let msg = format!("{} \x1b[31mlogout\x1B[0m", connection.username());
+    let msg = format!("{} logout", connection.username());
     Connection::send_all(pool.clone(), msg).await;
 }
 
@@ -43,10 +43,6 @@ async fn authorization(
     mut ws_tx: SocketSender,
     ws_rx: &mut SocketReciver,
 ) -> Option<(Connection, AbortHandle)> {
-    ws_tx
-        .send(Message::from("username?"))
-        .await
-        .expect("authorization: failed send");
     if let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
         let (channel_tx, mut channel_rx) = mpsc::unbounded_channel();
         let sender = tokio::spawn(async move {
