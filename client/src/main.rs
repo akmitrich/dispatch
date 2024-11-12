@@ -1,5 +1,8 @@
 use cursive::{
-    theme::Theme, view::{Nameable, Resizable}, views::{Dialog, EditView, LinearLayout, ListView, ScrollView, TextView}
+    theme::Theme,
+    view::{Nameable, Resizable},
+    views::{Dialog, EditView, LinearLayout, ListView, ScrollView, TextView},
+    Cursive,
 };
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
@@ -14,27 +17,19 @@ async fn main() {
     let mut siv = cursive::default().into_runner();
     let theme = Theme::terminal_default();
     siv.set_theme(theme);
-    let messages = Dialog::around(
-        ScrollView::new(ListView::new().with_name("messages").full_screen())
-            .scroll_strategy(cursive::view::ScrollStrategy::StickToBottom),
-    ).title("Messages");
-    let input = Dialog::around(
-        EditView::new()
-            .filler(" ")
-            .on_submit(move |s, text| {
-                if !text.is_empty() {
-                    let msg = text.to_string();
-                    sender.send(msg).expect("failed send");
-                    s.call_on_name("input", |view: &mut EditView| {
-                        view.set_content("");
-                    });
-                }
-            })
-            .with_name("input")
-            .full_width(),
-    ).title("Input");
-    let layout = LinearLayout::vertical().child(messages).child(input);
-    siv.add_layer(layout);
+    let username = LinearLayout::horizontal()
+        .child(Dialog::around(TextView::new("username")))
+        .child(Dialog::around(
+            EditView::new()
+                .on_submit(move |s, text| {
+                    sender.send(text.to_string()).expect("failed send");
+                    handler(s, sender.clone());
+                })
+                .filler(" ")
+                .fixed_width(10)
+                .with_name("username"),
+        ));
+    siv.add_layer(Dialog::around(username).title("Sing in"));
     siv.refresh();
     while siv.is_running() {
         siv.step();
@@ -64,4 +59,29 @@ async fn connect(url: &str) -> (ChannelSender, ChannelReceiver) {
         }
     });
     (server_tx, client_rx)
+}
+
+fn handler(s: &mut Cursive, sender: ChannelSender) {
+    s.pop_layer();
+    let messages = Dialog::around(
+        ScrollView::new(ListView::new().with_name("messages").full_screen())
+            .scroll_strategy(cursive::view::ScrollStrategy::StickToBottom),
+    ).title("Messages");
+    let input = Dialog::around(
+        EditView::new()
+            .filler(" ")
+            .on_submit(move |s, text| {
+                if !text.is_empty() {
+                    let msg = text.to_string();
+                    sender.send(msg).expect("failed send");
+                    s.call_on_name("input", |view: &mut EditView| {
+                        view.set_content("");
+                    });
+                }
+            })
+            .with_name("input")
+            .full_width(),
+    ).title("Input");
+    let layout = LinearLayout::vertical().child(messages).child(input);
+    s.add_layer(layout);
 }
