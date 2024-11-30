@@ -1,6 +1,7 @@
 mod websocket;
 
 use cursive::{
+    theme::Theme,
     view::{Nameable, Resizable},
     views::{Dialog, EditView, LinearLayout, ListView, ScrollView, TextView, ViewRef},
     CursiveRunnable, CursiveRunner,
@@ -11,64 +12,71 @@ use serde_json::json;
 async fn main() {
     let (sender, mut receiver) = websocket::connect("ws://localhost:8080").await;
     let mut siv = cursive::default().into_runner();
+    let mut theme = Theme::terminal_default();
+    theme.shadow = false;
+    siv.set_theme(theme);
     let username = LinearLayout::horizontal()
-        .child(Dialog::around(TextView::new("username")))
+        .child(Dialog::text("username").h_align(cursive::align::HAlign::Center))
         .child(Dialog::around(
             EditView::new()
-                .filler(' ')
+                .filler(" ")
                 .with_name("username")
-                .fixed_width(10),
+                .fixed_width(8),
         ));
     let password = LinearLayout::horizontal()
-        .child(Dialog::around(TextView::new("password")))
+        .child(Dialog::text("password"))
         .child(Dialog::around(
             EditView::new()
                 .secret()
                 .filler(" ")
                 .with_name("password")
-                .fixed_width(10),
+                .fixed_width(8),
         ));
     let layout = LinearLayout::vertical().child(username).child(password);
-    let layout_sender = sender.clone();
+    let sender_copy = sender.clone();
     siv.add_layer(
         Dialog::around(layout)
-            .title("Sing in")
+            .title("Dispatch")
             .button("Quit", |s| s.quit())
             .button("Enter", move |s| {
                 let username: ViewRef<EditView> =
                     s.find_name("username").expect("falied find \"username\"");
                 let password: ViewRef<EditView> =
                     s.find_name("password").expect("falied find \"password\"");
-                let data = json!({
+                let userdata = json!({
                     "username": username.get_content().to_string(),
                     "password": password.get_content().to_string(),
-                }).to_string();
-                layout_sender.send(data).expect("failed send");
-            }).h_align(cursive::align::HAlign::Center),
+                });
+                sender_copy.send(userdata.to_string()).expect("failed send");
+            })
+            .h_align(cursive::align::HAlign::Center),
     );
     siv.refresh();
     while siv.is_running() {
         siv.step();
         if !receiver.is_empty() {
             let msg = receiver.recv().await.expect("failed read");
-            if msg != "@connected" {
-                siv.add_layer(Dialog::info(msg).title("Failed authentication"));
-            } else { break; }
+            match msg.as_str() {
+                "@connected" => {
+                    message_exchange(&mut siv, sender.clone(), &mut receiver).await;
+                }
+                _ => {}
+            }
         }
     }
-    messages(siv, sender, receiver).await;
 }
 
-async fn messages(
-    mut siv: CursiveRunner<CursiveRunnable>,
+async fn message_exchange(
+    siv: &mut CursiveRunner<CursiveRunnable>,
     sender: websocket::ChannelSender,
-    mut receiver: websocket::ChannelReceiver,
+    receiver: &mut websocket::ChannelReceiver,
 ) {
     siv.pop_layer();
     let messages = Dialog::around(
         ScrollView::new(ListView::new().with_name("messages").full_screen())
             .scroll_strategy(cursive::view::ScrollStrategy::StickToBottom),
-    ).title("Messages");
+    )
+    .title("Messages");
     let input = Dialog::around(
         EditView::new()
             .filler(" ")
@@ -83,7 +91,7 @@ async fn messages(
             })
             .with_name("input")
             .full_width(),
-    ).title("Input");
+    );
     let layout = LinearLayout::vertical().child(messages).child(input);
     siv.add_layer(layout);
     siv.refresh();
@@ -94,7 +102,7 @@ async fn messages(
             siv.call_on_name("messages", |view: &mut ListView| {
                 view.add_child("", TextView::new(msg));
             });
-            siv.refresh();            
+            siv.refresh();
         }
     }
 }
