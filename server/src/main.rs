@@ -1,83 +1,128 @@
-mod connection;
+mod authrequest;
+mod channel;
+mod context;
+mod response;
+mod userconnection;
 
-use connection::{Connection, Pool, SocketReciver, SocketSender};
-use futures_util::{SinkExt, StreamExt};
-use serde::Deserialize;
-use std::collections::HashMap;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, RwLock};
-use tokio::task::AbortHandle;
-use tokio_tungstenite::{accept_async, tungstenite::Message};
+use anyhow::Result;
+use authrequest::AuthRequest;
+use context::Context;
+use futures_util::{stream::SplitSink, StreamExt};
+use jwt_simple::{
+    claims::{Claims, NoCustomClaims},
+    prelude::{Duration, HS256Key, MACLike},
+};
+use response::Response;
+use std::env;
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
+};
+use tokio_tungstenite::{accept_async, tungstenite::Message, WebSocketStream};
+use userconnection::UserConnection;
+
+pub type WebSocketSender = SplitSink<WebSocketStream<TcpStream>, Message>;
 
 #[tokio::main]
-async fn main() {
-    let addr = "localhost:8080";
-    let listener = TcpListener::bind(addr).await.expect("server: failed bind");
-    let pool = Pool::new(RwLock::new(HashMap::new()));
+async fn main() -> Result<()> {
+    dotenv::dotenv().ok();
+    let context = Context::create().await?;
+    let listener = TcpListener::bind("localhost:3000").await?;
     while let Ok((socket, _)) = listener.accept().await {
-        tokio::spawn(handler(pool.clone(), socket));
+        tokio::spawn(handle(context.clone(), socket));
     }
+    Ok(())
 }
 
-async fn handler(pool: Pool, socket: TcpStream) {
-    let ws_stream = accept_async(socket).await.expect("socket: failed accept");
-    let (ws_tx, mut ws_rx) = ws_stream.split();
-    match authorization(ws_tx, &mut ws_rx).await {
-        Some((connection, sender_aborthandle)) => {
-            pool.write()
-                .await
-                .insert(connection.id(), connection.clone());
-            let msg = format!("{} joined", connection.username());
-            Connection::send_all(pool.clone(), msg).await;
-            while let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
-                let msg = format!("{}: {}", connection.username(), msg);
-                Connection::send_all(pool.clone(), msg).await;
-            }
-            pool.write().await.remove(&connection.id());
-            sender_aborthandle.abort();
-            let msg = format!("{} logout", connection.username());
-            Connection::send_all(pool.clone(), msg).await;
+async fn handle(context: Context, socket: TcpStream) -> Result<()> {
+    let mut buf = [0; 1024];
+    let n = socket.peek(&mut buf).await?;
+    let request = String::from_utf8_lossy(&buf[..n]);
+    let (headers, body) = request.split_once("\r\n\r\n").unwrap();
+    if let Some(line) = headers.lines().next() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        let method = parts[0];
+        let path = parts[1];
+        match (method, path) {
+            ("POST", "/signin") => signin(context, socket, body).await?,
+            ("POST", "/signup") => signup(context, socket, body).await?,
+            ("GET", "/connect") => connect(context, socket, headers).await?,
+            _ => {}
         }
-        None => return,
     }
+    Ok(())
 }
 
-#[derive(Deserialize)]
-struct Userdata {
-    username: String,
-    password: String,
-}
-
-impl From<String> for Userdata {
-    fn from(value: String) -> Self {
-        serde_json::from_str::<Self>(&value).expect("failed userdata")
+async fn signin(context: Context, mut socket: TcpStream, body: &str) -> Result<()> {
+    let request: AuthRequest = serde_json::from_str(body)?;
+    let query = sqlx::query("SELECT * FROM users WHERE (username = $1) AND (password = $2)")
+        .bind(request.username)
+        .bind(request.password)
+        .execute(&context.db_pool)
+        .await?;
+    if query.rows_affected() != 0 {
+        if !context.contains(request.username).await {
+            let key = HS256Key::from_bytes(env::var("SECRET")?.as_bytes());
+            let claims = Claims::create(Duration::from_mins(1)).with_subject(request.username);
+            let token = key.authenticate(claims)?;
+            socket.write(&Response::new(200, "OK", &token)).await?;
+        } else {
+            socket
+                .write(&Response::new(409, "Conflict", "Already in"))
+                .await?;
+        }
+    } else {
+        socket
+            .write(&Response::new(
+                401,
+                "Unauthorized",
+                "Wrong username/password",
+            ))
+            .await?;
     }
+    Ok(())
 }
 
-async fn authorization(
-    mut ws_tx: SocketSender,
-    ws_rx: &mut SocketReciver,
-) -> Option<(Connection, AbortHandle)> {
-    match ws_rx.next().await {
-        Some(Ok(Message::Text(msg))) => {
-            println!("{}", msg);
-            let userdata = Userdata::from(msg);
-            let (channel_tx, mut channel_rx) = mpsc::unbounded_channel();
-            ws_tx
-                .send(Message::from("@connected"))
-                .await
-                .expect("authorization: failed send");
-            let sender_aborthandle = tokio::spawn(async move {
-                while let Some(msg) = channel_rx.recv().await {
-                    ws_tx
-                        .send(Message::from(msg))
-                        .await
-                        .expect("failed send to client");
+async fn signup(context: Context, mut socket: TcpStream, body: &str) -> Result<()> {
+    let request: AuthRequest = serde_json::from_str(body)?;
+    let query = sqlx::query("SELECT * FROM users WHERE username = $1")
+        .bind(request.username)
+        .execute(&context.db_pool)
+        .await?;
+    if query.rows_affected() == 0 {
+        socket.write(&Response::new(200, "OK", "Success")).await?;
+        sqlx::query("INSERT INTO users (username, password) VALUES ($1, $2)")
+            .bind(request.username)
+            .bind(request.password)
+            .execute(&context.db_pool)
+            .await?;
+    } else {
+        socket
+            .write(&Response::new(409, "Conflict", "Already exists"))
+            .await?;
+    }
+    Ok(())
+}
+
+async fn connect(mut context: Context, socket: TcpStream, headers: &str) -> Result<()> {
+    if headers.contains("Upgrade: websocket") {
+        let mut ws_stream = accept_async(socket).await?;
+        if let Some(Ok(Message::Text(token))) = ws_stream.next().await {
+            let key = HS256Key::from_bytes(env::var("SECRET")?.as_bytes());
+            match key.verify_token::<NoCustomClaims>(&token, None) {
+                Ok(claims) => {
+                    let username = claims.subject.unwrap();
+                    let (ws_tx, mut ws_rx) = ws_stream.split();
+                    let connection = UserConnection::new(ws_tx).await;
+                    context.insert(&username, connection).await;
+                    while let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
+                        context.send(&username, msg)?
+                    }
+                    context.remove(&username).await;
                 }
-            })
-            .abort_handle();
-            Some((Connection::new(userdata.username, channel_tx), sender_aborthandle))
+                Err(_) => ws_stream.close(None).await?,
+            }
         }
-        _ => None,
     }
+    Ok(())
 }
