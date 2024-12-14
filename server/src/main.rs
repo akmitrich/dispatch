@@ -13,7 +13,6 @@ use jwt_simple::{
     prelude::{Duration, HS256Key, MACLike},
 };
 use response::Response;
-use std::env;
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
@@ -62,7 +61,7 @@ async fn signin(context: Context, mut socket: TcpStream, body: &str) -> Result<(
         .await?;
     if query.rows_affected() != 0 {
         if !context.contains(request.username).await {
-            let key = HS256Key::from_bytes(env::var("SECRET")?.as_bytes());
+            let key = HS256Key::from_bytes(context.secret_key());
             let claims = Claims::create(Duration::from_mins(1)).with_subject(request.username);
             let token = key.authenticate(claims)?;
             socket.write(&Response::new(200, "OK", &token)).await?;
@@ -108,7 +107,7 @@ async fn connect(mut context: Context, socket: TcpStream, headers: &str) -> Resu
     if headers.contains("Upgrade: websocket") {
         let mut ws_stream = accept_async(socket).await?;
         if let Some(Ok(Message::Text(token))) = ws_stream.next().await {
-            let key = HS256Key::from_bytes(env::var("SECRET")?.as_bytes());
+            let key = HS256Key::from_bytes(context.secret_key());
             match key.verify_token::<NoCustomClaims>(&token, None) {
                 Ok(claims) => {
                     let username = claims.subject.unwrap();
