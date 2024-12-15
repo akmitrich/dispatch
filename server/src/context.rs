@@ -56,6 +56,6 @@ impl Context {
             .await
             .remove(username)
             .unwrap()
-            .abort();
+            .close();
     }
 }

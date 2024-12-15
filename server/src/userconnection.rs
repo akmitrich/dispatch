@@ -26,7 +26,7 @@ impl UserConnection {
         let err = format!("failed to send to {}", msg.from);
         self.sender.send(msg).expect(&err);
     }
-    pub fn abort(&self) {
+    pub fn close(&self) {
         self.aborthandle.abort();
     }
 }
