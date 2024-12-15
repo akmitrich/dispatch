@@ -1,5 +1,4 @@
 pub struct Response;
-
 impl Response {
     pub fn new(status_code: u16, status_text: &str, body: &str) -> Vec<u8> {
         format!(
