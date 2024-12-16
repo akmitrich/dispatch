@@ -22,18 +22,18 @@ pub struct Channel {
     sender: ChannelSender,
 }
 impl Channel {
-    pub async fn new(database_url: &str, conn_pool: ConnectionsPool) -> Result<Self> {
-        let mut db_conn = PgConnection::connect(&database_url).await?;
+    pub async fn new(database_url: &str, connections: ConnectionsPool) -> Result<Self> {
+        let mut pg_connection = PgConnection::connect(&database_url).await?;
         let (sender, mut receiver) = mpsc::unbounded_channel::<ChannelMessage>();
         tokio::spawn(async move {
             while let Some(msg) = receiver.recv().await {
-                for (_, connection) in conn_pool.read().await.iter() {
+                for (_, connection) in connections.read().await.iter() {
                     connection.send(msg.clone());
                 }
                 // sqlx::query("INSERT INTO chat_history (\"from\", \"body\") VALUES ($1, $2)")
                 //     .bind(&msg.from)
                 //     .bind(&msg.body)
-                //     .execute(&mut conn)
+                //     .execute(&mut pg_connection)
                 //     .await;
             }
         });

@@ -15,7 +15,7 @@ pub async fn signin(context: Context, mut socket: TcpStream, body: &str) -> Resu
     let query = sqlx::query("SELECT * FROM users WHERE (username = $1) AND (password = $2)")
         .bind(userdata.username)
         .bind(userdata.password)
-        .execute(&context.db_pool)
+        .execute(&context.pg_pool)
         .await?;
     if query.rows_affected() != 0 {
         if !context.contains(userdata.username).await {
@@ -43,14 +43,14 @@ pub async fn signup(context: Context, mut socket: TcpStream, body: &str) -> Resu
     let userdata: AuthRequest = serde_json::from_str(body)?;
     let query = sqlx::query("SELECT * FROM users WHERE username = $1")
         .bind(userdata.username)
-        .execute(&context.db_pool)
+        .execute(&context.pg_pool)
         .await?;
     if query.rows_affected() == 0 {
         socket.write(&Response::new(200, "OK", "Success")).await?;
         sqlx::query("INSERT INTO users (username, password) VALUES ($1, $2)")
             .bind(userdata.username)
             .bind(userdata.password)
-            .execute(&context.db_pool)
+            .execute(&context.pg_pool)
             .await?;
     } else {
         socket
