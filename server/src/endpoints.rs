@@ -1,5 +1,6 @@
 use crate::{
-    authrequest::AuthRequest, context::Context, response::Response, userconnection::UserConnection,
+    authrequest::AuthRequest, channel::ChannelMessage, context::Context, response::Response,
+    userconnection::UserConnection,
 };
 use anyhow::Result;
 use futures_util::StreamExt;
@@ -69,6 +70,12 @@ pub async fn connect(mut context: Context, socket: TcpStream, headers: &str) -> 
                     let username = claims.subject.unwrap();
                     let (ws_tx, mut ws_rx) = ws_stream.split();
                     let connection = UserConnection::new(ws_tx).await;
+                    let messages = sqlx::query_as::<_, ChannelMessage>("SELECT \"from\", \"body\", gate_timestamp FROM messages")
+                        .fetch_all(&context.pg_pool)
+                        .await?;
+                    for msg in messages {
+                        connection.send(msg);
+                    }
                     context.insert(&username, connection).await;
                     while let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
                         context.send(&username, msg)?

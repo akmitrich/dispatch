@@ -3,6 +3,7 @@ use crate::{
     userconnection::UserConnection,
 };
 use anyhow::Result;
+use chrono::Utc;
 use jwt_simple::prelude::HS256Key;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{collections::HashMap, env, sync::Arc};
@@ -39,6 +40,7 @@ impl Context {
         self.channel.send(ChannelMessage {
             from: from.to_string(),
             body: body,
+            gate_timestamp: Utc::now().timestamp_millis(),
         })?;
         Ok(())
     }
