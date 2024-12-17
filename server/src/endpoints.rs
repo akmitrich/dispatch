@@ -3,7 +3,7 @@ use crate::{
     userconnection::UserConnection,
 };
 use anyhow::Result;
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use jwt_simple::{
     claims::{Claims, NoCustomClaims},
     prelude::{Duration, MACLike},
@@ -70,12 +70,12 @@ pub async fn connect(mut context: Context, socket: TcpStream, headers: &str) -> 
                     let username = claims.subject.unwrap();
                     let (ws_tx, mut ws_rx) = ws_stream.split();
                     let connection = UserConnection::new(ws_tx).await;
-                    let messages = sqlx::query_as::<_, ChannelMessage>("SELECT \"from\", \"body\", gate_timestamp FROM messages")
-                        .fetch_all(&context.pg_pool)
-                        .await?;
-                    for msg in messages {
-                        connection.send(msg);
-                    }
+                    let preload = sqlx::query_as::<_, ChannelMessage>(
+                        "SELECT \"from\", \"body\", gate_timestamp FROM messages",
+                    )
+                    .fetch_all(&context.pg_pool)
+                    .await?;
+                    preload.iter().for_each(|msg| connection.send(msg.clone()));
                     context.insert(&username, connection).await;
                     while let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
                         context.send(&username, msg)?
