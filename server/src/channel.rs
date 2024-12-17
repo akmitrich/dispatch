@@ -1,22 +1,9 @@
-use crate::context::ConnectionsPool;
+use crate::{channelmessage::ChannelMessage, context::ConnectionsPool};
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use sqlx::{prelude::FromRow, Connection, PgConnection};
+use sqlx::{Connection, PgConnection};
 use tokio::sync::mpsc;
 
 pub type ChannelSender = mpsc::UnboundedSender<ChannelMessage>;
-
-#[derive(Serialize, Deserialize, Clone, FromRow, Debug)]
-pub struct ChannelMessage {
-    pub from: String,
-    pub body: String,
-    pub gate_timestamp: i64,
-}
-impl ChannelMessage {
-    pub fn to_string(&self) -> Result<String> {
-        Ok(serde_json::to_string(self)?)
-    }
-}
 
 #[derive(Clone)]
 pub struct Channel {
@@ -31,13 +18,15 @@ impl Channel {
                 for (_, connection) in connections.read().await.iter() {
                     connection.send(msg.clone());
                 }
-                sqlx::query("INSERT INTO messages (\"from\", \"body\", gate_timestamp) VALUES ($1, $2, $3)")
-                    .bind(&msg.from)
-                    .bind(&msg.body)
-                    .bind(msg.gate_timestamp)
-                    .execute(&mut pg_connection)
-                    .await
-                    .expect("failed insert into to \"messages\"");
+                sqlx::query(
+                    "INSERT INTO messages (\"from\", \"body\", gate_timestamp) VALUES ($1, $2, $3)",
+                )
+                .bind(&msg.from)
+                .bind(&msg.body)
+                .bind(msg.gate_timestamp)
+                .execute(&mut pg_connection)
+                .await
+                .expect("failed insert into to \"messages\"");
             }
         });
         Ok(Self { sender: sender })

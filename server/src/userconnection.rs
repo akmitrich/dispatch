@@ -1,4 +1,4 @@
-use crate::channel::{ChannelMessage, ChannelSender};
+use crate::{channel::ChannelSender, channelmessage::ChannelMessage};
 use futures_util::{stream::SplitSink, SinkExt};
 use tokio::{net::TcpStream, sync::mpsc, task::AbortHandle};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};

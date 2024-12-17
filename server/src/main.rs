@@ -4,6 +4,7 @@ mod context;
 mod endpoints;
 mod response;
 mod userconnection;
+mod channelmessage;
 
 use anyhow::Result;
 use context::Context;

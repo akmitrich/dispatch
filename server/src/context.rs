@@ -1,7 +1,4 @@
-use crate::{
-    channel::{Channel, ChannelMessage},
-    userconnection::UserConnection,
-};
+use crate::{channel::Channel, channelmessage::ChannelMessage, userconnection::UserConnection};
 use anyhow::Result;
 use chrono::Utc;
 use jwt_simple::prelude::HS256Key;
@@ -35,7 +32,9 @@ impl Context {
             connections: connections,
         })
     }
-    pub fn key(&self) -> &HS256Key { &self.key }
+    pub fn key(&self) -> &HS256Key {
+        &self.key
+    }
     pub fn send(&self, from: &str, body: String) -> Result<()> {
         self.channel.send(ChannelMessage {
             from: from.to_string(),

@@ -1,9 +1,9 @@
 use crate::{
-    authrequest::AuthRequest, channel::ChannelMessage, context::Context, response::Response,
+    authrequest::AuthRequest, channelmessage::ChannelMessage, context::Context, response::Response,
     userconnection::UserConnection,
 };
 use anyhow::Result;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use jwt_simple::{
     claims::{Claims, NoCustomClaims},
     prelude::{Duration, MACLike},
@@ -75,7 +75,7 @@ pub async fn connect(mut context: Context, socket: TcpStream, headers: &str) -> 
                     )
                     .fetch_all(&context.pg_pool)
                     .await?;
-                    preload.iter().for_each(|msg| connection.send(msg.clone()));
+                    preload.into_iter().for_each(|msg| connection.send(msg));
                     context.insert(&username, connection).await;
                     while let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
                         context.send(&username, msg)?
