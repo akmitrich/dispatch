@@ -24,7 +24,7 @@ impl Context {
             .connect(&database_url)
             .await?;
         let connections = Arc::new(RwLock::new(HashMap::new()));
-        let channel = Channel::new(&database_url, connections.clone()).await?;
+        let channel = Channel::new(pg_pool.clone(), connections.clone()).await?;
         Ok(Self {
             key: key,
             pg_pool: pg_pool,
@@ -39,7 +39,7 @@ impl Context {
         self.channel.send(ChannelMessage {
             from: from.to_string(),
             body: body,
-            gate_timestamp: Utc::now().timestamp_millis(),
+            timestamp: Utc::now().timestamp_millis(),
         })?;
         Ok(())
     }

@@ -1,6 +1,6 @@
 use crate::{channelmessage::ChannelMessage, context::ConnectionsPool};
 use anyhow::Result;
-use sqlx::{Connection, PgConnection};
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 pub type ChannelSender = mpsc::UnboundedSender<ChannelMessage>;
@@ -10,8 +10,7 @@ pub struct Channel {
     sender: ChannelSender,
 }
 impl Channel {
-    pub async fn new(database_url: &str, connections: ConnectionsPool) -> Result<Self> {
-        let mut pg_connection = PgConnection::connect(&database_url).await?;
+    pub async fn new(pg_pool: PgPool, connections: ConnectionsPool) -> Result<Self> {
         let (sender, mut receiver) = mpsc::unbounded_channel::<ChannelMessage>();
         tokio::spawn(async move {
             while let Some(msg) = receiver.recv().await {
@@ -19,14 +18,14 @@ impl Channel {
                     connection.send(msg.clone());
                 }
                 sqlx::query(
-                    "INSERT INTO messages (\"from\", \"body\", gate_timestamp) VALUES ($1, $2, $3)",
+                    "INSERT INTO messages (\"from\", \"body\", timestamp) VALUES ($1, $2, $3)",
                 )
                 .bind(&msg.from)
                 .bind(&msg.body)
-                .bind(msg.gate_timestamp)
-                .execute(&mut pg_connection)
+                .bind(msg.timestamp)
+                .execute(&pg_pool)
                 .await
-                .expect("failed insert into to \"messages\"");
+                .expect("failed insert into to table \"messages\"");
             }
         });
         Ok(Self { sender: sender })

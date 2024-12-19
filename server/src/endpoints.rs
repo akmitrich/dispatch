@@ -71,7 +71,7 @@ pub async fn connect(mut context: Context, socket: TcpStream, headers: &str) -> 
                     let (ws_tx, mut ws_rx) = ws_stream.split();
                     let connection = UserConnection::new(ws_tx).await;
                     let preload = sqlx::query_as::<_, ChannelMessage>(
-                        "SELECT \"from\", \"body\", gate_timestamp FROM messages",
+                        "SELECT \"from\", \"body\", timestamp FROM messages",
                     )
                     .fetch_all(&context.pg_pool)
                     .await?;

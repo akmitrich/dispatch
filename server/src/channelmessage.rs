@@ -6,7 +6,7 @@ use sqlx::prelude::FromRow;
 pub struct ChannelMessage {
     pub from: String,
     pub body: String,
-    pub gate_timestamp: i64,
+    pub timestamp: i64,
 }
 impl ChannelMessage {
     pub fn to_string(&self) -> Result<String> {
