@@ -6,6 +6,7 @@ mod response;
 mod userconnection;
 mod channelmessage;
 
+use std::env;
 use anyhow::Result;
 use context::Context;
 use endpoints::{connect, signin, signup};
@@ -15,7 +16,7 @@ use tokio::net::{TcpListener, TcpStream};
 async fn main() -> Result<()> {
     dotenv::from_path("server/.env").ok();
     let context = Context::create().await?;
-    let listener = TcpListener::bind("localhost:3000").await?;
+    let listener = TcpListener::bind(env::var("ADDRESS")?).await?;
     while let Ok((socket, _)) = listener.accept().await {
         tokio::spawn(handle(context.clone(), socket));
     }
