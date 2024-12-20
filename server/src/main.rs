@@ -13,7 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv::dotenv().ok();
+    dotenv::from_path("server/.env").ok();
     let context = Context::create().await?;
     let listener = TcpListener::bind("localhost:3000").await?;
     while let Ok((socket, _)) = listener.accept().await {
