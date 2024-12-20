@@ -12,15 +12,21 @@ use tokio::{io::AsyncWriteExt, net::TcpStream};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 pub async fn signin(context: Context, mut socket: TcpStream, body: &str) -> Result<()> {
-    let userdata: AuthRequest = serde_json::from_str(body)?;
+    let authrequest: AuthRequest = serde_json::from_str(body)?;
+    if !authrequest.is_valid() {
+        socket
+            .write(&Response::new(409, "Conflict", "Wrong format"))
+            .await?;
+        return Ok(());
+    }
     let query = sqlx::query("SELECT * FROM users WHERE (username = $1) AND (password = $2)")
-        .bind(userdata.username)
-        .bind(userdata.password)
+        .bind(authrequest.username)
+        .bind(authrequest.password)
         .execute(&context.pg_pool)
         .await?;
     if query.rows_affected() != 0 {
-        if !context.contains(userdata.username).await {
-            let claims = Claims::create(Duration::from_mins(1)).with_subject(userdata.username);
+        if !context.contains(authrequest.username).await {
+            let claims = Claims::create(Duration::from_mins(1)).with_subject(authrequest.username);
             let token = context.key().authenticate(claims)?;
             socket.write(&Response::new(200, "OK", &token)).await?;
         } else {
@@ -41,16 +47,22 @@ pub async fn signin(context: Context, mut socket: TcpStream, body: &str) -> Resu
 }
 
 pub async fn signup(context: Context, mut socket: TcpStream, body: &str) -> Result<()> {
-    let userdata: AuthRequest = serde_json::from_str(body)?;
+    let authrequest: AuthRequest = serde_json::from_str(body)?;
+    if !authrequest.is_valid() {
+        socket
+            .write(&Response::new(409, "Conflict", "Wrong format"))
+            .await?;
+        return Ok(());
+    }
     let query = sqlx::query("SELECT * FROM users WHERE username = $1")
-        .bind(userdata.username)
+        .bind(authrequest.username)
         .execute(&context.pg_pool)
         .await?;
     if query.rows_affected() == 0 {
         socket.write(&Response::new(200, "OK", "Success")).await?;
         sqlx::query("INSERT INTO users (username, password) VALUES ($1, $2)")
-            .bind(userdata.username)
-            .bind(userdata.password)
+            .bind(authrequest.username)
+            .bind(authrequest.password)
             .execute(&context.pg_pool)
             .await?;
     } else {
