@@ -1,108 +1,153 @@
-mod websocket;
+mod authrequest;
+mod channelmessage;
+mod customviews;
 
+use anyhow::Result;
+use authrequest::AuthRequest;
+use channelmessage::ChannelMessage;
+use crossterm::style::Stylize;
 use cursive::{
     theme::Theme,
+    utils::markup::ansi::parse,
     view::{Nameable, Resizable},
-    views::{Dialog, EditView, LinearLayout, ListView, ScrollView, TextView, ViewRef},
+    views::{
+        Button, DummyView, EditView, LinearLayout, ListView, Panel, ScrollView, TextView, ViewRef,
+    },
     CursiveRunnable, CursiveRunner,
 };
-use serde_json::json;
+use customviews::{MessageView, PasswordView, UsernameView};
+use futures_util::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
+use tokio_tungstenite::{connect_async, tungstenite::Message};
+use ureq::serde_json;
 
 #[tokio::main]
 async fn main() {
-    let (sender, mut receiver) = websocket::connect("ws://localhost:8080").await;
     let mut siv = cursive::default().into_runner();
     let mut theme = Theme::terminal_default();
     theme.shadow = false;
     siv.set_theme(theme);
-    let username = LinearLayout::horizontal()
-        .child(Dialog::text("username").h_align(cursive::align::HAlign::Center))
-        .child(Dialog::around(
-            EditView::new()
-                .filler(" ")
-                .with_name("username")
-                .fixed_width(8),
-        ));
-    let password = LinearLayout::horizontal()
-        .child(Dialog::text("password"))
-        .child(Dialog::around(
-            EditView::new()
-                .secret()
-                .filler(" ")
-                .with_name("password")
-                .fixed_width(8),
-        ));
-    let layout = LinearLayout::vertical().child(username).child(password);
-    let sender_copy = sender.clone();
-    siv.add_layer(
-        Dialog::around(layout)
-            .title("Dispatch")
-            .button("Quit", |s| s.quit())
-            .button("Enter", move |s| {
-                let username: ViewRef<EditView> =
-                    s.find_name("username").expect("falied find \"username\"");
-                let password: ViewRef<EditView> =
-                    s.find_name("password").expect("falied find \"password\"");
-                let userdata = json!({
-                    "username": username.get_content().to_string(),
-                    "password": password.get_content().to_string(),
-                });
-                sender_copy.send(userdata.to_string()).expect("failed send");
-            })
-            .h_align(cursive::align::HAlign::Center),
-    );
+    let layout = LinearLayout::vertical()
+        .child(UsernameView::new("username"))
+        .child(PasswordView::new("password"))
+        .child(Button::new("No access? Sign up", |s| {
+            let username: ViewRef<EditView> = s.find_name("username").unwrap();
+            let password: ViewRef<EditView> = s.find_name("password").unwrap();
+            let userdata = AuthRequest {
+                username: &username.get_content().to_string(),
+                password: &password.get_content().to_string(),
+            };
+            let mut status: ViewRef<TextView> = s.find_name("status").unwrap();
+            if userdata.is_valid() {
+                match ureq::post("http://localhost:3000/signup").send_json(&userdata) {
+                    Ok(response) => status.set_content(parse(
+                        response.into_string().unwrap().on_green().to_string(),
+                    )),
+                    Err(err) => match err.into_response() {
+                        Some(response) => {
+                            let response = response.into_string().unwrap();
+                            status.set_content(parse(response.on_red().to_string()));
+                        }
+                        None => status.set_content(parse("Failed connection".on_red().to_string())),
+                    },
+                }
+            } else {
+                status.set_content(parse("Wrong format".on_red().to_string()));
+            }
+        }))
+        .child(
+            TextView::empty()
+                .h_align(cursive::align::HAlign::Center)
+                .with_name("status"),
+        )
+        .child(
+            LinearLayout::horizontal()
+                .child(DummyView.fixed_width(5))
+                .child(Button::new("Quit", |s| s.quit()))
+                .child(DummyView.fixed_width(2))
+                .child(Button::new("Sign in", |s| {
+                    let username: ViewRef<EditView> = s.find_name("username").unwrap();
+                    let password: ViewRef<EditView> = s.find_name("password").unwrap();
+                    let userdata = AuthRequest {
+                        username: &username.get_content().to_string(),
+                        password: &password.get_content().to_string(),
+                    };
+                    let mut status: ViewRef<TextView> = s.find_name("status").unwrap();
+                    if userdata.is_valid() {
+                        match ureq::post("http://localhost:3000/signin").send_json(&userdata) {
+                            Ok(response) => s.set_user_data(response.into_string().unwrap()),
+                            Err(err) => match err.into_response() {
+                                Some(response) => {
+                                    let response = response.into_string().unwrap();
+                                    status.set_content(parse(response.on_red().to_string()));
+                                }
+                                None => status
+                                    .set_content(parse("Failed connection".on_red().to_string())),
+                            },
+                        }
+                    } else {
+                        status.set_content(parse("Wrong format".on_red().to_string()));
+                    }
+                })),
+        );
+    siv.add_layer(Panel::new(layout).title("Dispatch"));
     siv.refresh();
     while siv.is_running() {
         siv.step();
-        if !receiver.is_empty() {
-            let msg = receiver.recv().await.expect("failed read");
-            match msg.as_str() {
-                "@connected" => {
-                    message_exchange(&mut siv, sender.clone(), &mut receiver).await;
-                }
-                _ => {}
-            }
+        if let Some(token) = siv.take_user_data::<String>() {
+            connect(&mut siv, token).await.expect("failed \"connect\"");
         }
     }
 }
 
-async fn message_exchange(
-    siv: &mut CursiveRunner<CursiveRunnable>,
-    sender: websocket::ChannelSender,
-    receiver: &mut websocket::ChannelReceiver,
-) {
-    siv.pop_layer();
-    let messages = Dialog::around(
-        ScrollView::new(ListView::new().with_name("messages").full_screen())
-            .scroll_strategy(cursive::view::ScrollStrategy::StickToBottom),
-    )
-    .title("Messages");
-    let input = Dialog::around(
-        EditView::new()
-            .filler(" ")
-            .on_submit(move |s, text| {
-                if !text.is_empty() {
-                    let msg = text.to_string();
-                    sender.send(msg).expect("failed send");
-                    let mut input: ViewRef<EditView> =
-                        s.find_name("input").expect("falied find \"input\"");
-                    input.set_content("");
-                }
-            })
-            .with_name("input")
-            .full_width(),
-    );
-    let layout = LinearLayout::vertical().child(messages).child(input);
+async fn connect(siv: &mut CursiveRunner<CursiveRunnable>, token: String) -> Result<()> {
+    let (mut ws_stream, _) = connect_async("ws://localhost:3000/connect").await?;
+    ws_stream.send(Message::Text(token)).await?;
+    let (mut ws_tx, mut ws_rx) = ws_stream.split();
+    let (sender, mut receiver) = mpsc::unbounded_channel::<ChannelMessage>();
+    tokio::spawn(async move {
+        while let Some(Ok(Message::Text(msg))) = ws_rx.next().await {
+            let message =
+                serde_json::from_str(&msg).expect("failed deserialize to \"ChannelMessage\"");
+            sender.send(message).expect("failed to send to channel");
+        }
+    });
+    let layout = LinearLayout::vertical()
+        .child(
+            ScrollView::new(ListView::new())
+                .with_name("messages")
+                .full_screen(),
+        )
+        .child(Panel::new(
+            EditView::new()
+                .filler(" ")
+                .on_submit(|s, text| {
+                    let text = text.trim_end().to_string();
+                    if !text.is_empty() {
+                        s.set_user_data(text);
+                        let mut input: ViewRef<EditView> = s.find_name("input").unwrap();
+                        input.set_content("");
+                    }
+                })
+                .with_name("input")
+                .full_width(),
+        ));
     siv.add_layer(layout);
     siv.refresh();
     while siv.is_running() {
         siv.step();
+        if let Some(msg) = siv.take_user_data::<String>() {
+            ws_tx.send(Message::Text(msg)).await.unwrap();
+        }
         if !receiver.is_empty() {
-            let msg = receiver.recv().await.expect("failed read");
-            siv.call_on_name("messages", |view: &mut ListView| {
-                view.add_child("", TextView::new(msg));
-            });
-            siv.refresh();
+            if let Some(msg) = receiver.recv().await {
+                siv.call_on_name("messages", |view: &mut ScrollView<ListView>| {
+                    view.get_inner_mut().add_child("", MessageView::new(msg));
+                    view.scroll_to_bottom()
+                });
+                siv.refresh();
+            }
         }
     }
+    Ok(())
 }
