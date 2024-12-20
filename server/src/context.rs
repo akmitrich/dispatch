@@ -1,6 +1,5 @@
 use crate::{channel::Channel, channelmessage::ChannelMessage, userconnection::UserConnection};
 use anyhow::Result;
-use chrono::Utc;
 use jwt_simple::prelude::HS256Key;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{collections::HashMap, env, sync::Arc};
@@ -32,27 +31,23 @@ impl Context {
             connections: connections,
         })
     }
-    pub fn key(&self) -> &HS256Key {
-        &self.key
-    }
-    pub fn send(&self, from: &str, body: String) -> Result<()> {
-        self.channel.send(ChannelMessage {
-            from: from.to_string(),
-            body: body,
-            timestamp: Utc::now().timestamp_millis(),
-        })?;
-        Ok(())
-    }
+    pub fn key(&self) -> &HS256Key { &self.key }
     pub async fn contains(&self, username: &str) -> bool {
         self.connections.read().await.contains_key(username)
     }
-    pub async fn insert(&mut self, username: &str, connection: UserConnection) {
-        self.connections
-            .write()
-            .await
-            .insert(username.to_string(), connection);
+    pub async fn plug(&mut self, username: &str, connection: UserConnection) -> Result<()> {
+        let mut lock = self.connections.write().await;
+        let preload = sqlx::query_as::<_, ChannelMessage>(
+            "SELECT \"from\", \"body\", timestamp FROM messages",
+        )
+        .fetch_all(&self.pg_pool)
+        .await?;
+        preload.into_iter().for_each(|msg| connection.send(msg));
+        lock.insert(username.to_string(), connection);
+        Ok(())
+
     }
-    pub async fn remove(&mut self, username: &str) {
+    pub async fn unplug(&mut self, username: &str) {
         self.connections
             .write()
             .await
