@@ -16,7 +16,7 @@ pub struct Context {
 }
 impl Context {
     pub async fn create() -> Result<Self> {
-        let key = HS256Key::from_bytes(env::var("SECRET_KEY")?.as_bytes());
+        let key = HS256Key::generate();
         let database_url = env::var("DATABASE_URL")?;
         let pg_pool = PgPoolOptions::new()
             .max_connections(10)
