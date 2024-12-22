@@ -14,7 +14,7 @@ use tokio::net::{TcpListener, TcpStream};
 #[tokio::main]
 async fn main() -> Result<()> {
     let context = Context::create().await?;
-    let listener = TcpListener::bind(std::env::var("ADDRESS")?).await?;
+    let listener = TcpListener::bind("0.0.0.0:3000").await?;
     while let Ok((socket, _)) = listener.accept().await {
         tokio::spawn(handle(context.clone(), socket));
     }
