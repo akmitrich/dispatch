@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dispatch_postgres
+    ports:
+      - 5432:5432
+  backend:
+    build:
+      context: ./backend
+    container_name: backend
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres/dispatch_postgres
+    ports:
+      - 3000:3000
+    depends_on:
+      - postgres
