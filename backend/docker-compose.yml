@@ -10,7 +10,7 @@ services:
       - 5432:5432
   backend:
     build:
-      context: ./backend
+      context: .
     container_name: backend
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres/dispatch_postgres
