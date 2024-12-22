@@ -18,7 +18,7 @@ impl Channel {
                     connection.send(msg.clone());
                 }
                 sqlx::query(
-                    "INSERT INTO messages (\"from\", \"body\", timestamp) VALUES ($1, $2, $3)",
+                    "INSERT INTO messages (\"from\", \"body\", \"timestamp\") VALUES ($1, $2, $3)",
                 )
                 .bind(&msg.from)
                 .bind(&msg.body)

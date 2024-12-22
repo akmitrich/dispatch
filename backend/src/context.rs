@@ -39,7 +39,7 @@ impl Context {
     pub async fn plug(&mut self, username: &str, connection: UserConnection) -> Result<()> {
         let mut lock = self.connections.write().await;
         let preload = sqlx::query_as::<_, ChannelMessage>(
-            "SELECT \"from\", \"body\", timestamp FROM messages",
+            "SELECT \"from\", \"body\", \"timestamp\" FROM messages",
         )
         .fetch_all(&self.pg_pool)
         .await?;
