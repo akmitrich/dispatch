@@ -3,6 +3,7 @@ mod channelmessage;
 mod customviews;
 
 use anyhow::Result;
+use argh::{from_env, FromArgs};
 use authrequest::AuthRequest;
 use channelmessage::ChannelMessage;
 use crossterm::style::Stylize;
@@ -21,8 +22,17 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use ureq::serde_json;
 
+#[derive(FromArgs)]
+/// Dispatch client
+struct Options {
+    /// host address, e.g., "localhost:3000"
+    #[argh(option)]
+    host: String,
+}
+
 #[tokio::main]
 async fn main() {
+    let host = from_env::<Options>().host;
     let mut siv = cursive::default().into_runner();
     let mut theme = Theme::terminal_default();
     theme.shadow = false;
@@ -39,7 +49,9 @@ async fn main() {
             };
             let mut status: ViewRef<TextView> = s.find_name("status").unwrap();
             if userdata.is_valid() {
-                match ureq::post("http://localhost:3000/signup").send_json(&userdata) {
+                match ureq::post(&format!("http://{}/signup", from_env::<Options>().host))
+                    .send_json(&userdata)
+                {
                     Ok(response) => status.set_content(parse(
                         response.into_string().unwrap().on_green().to_string(),
                     )),
@@ -65,7 +77,7 @@ async fn main() {
                 .child(DummyView.fixed_width(5))
                 .child(Button::new("Quit", |s| s.quit()))
                 .child(DummyView.fixed_width(2))
-                .child(Button::new("Sign in", |s| {
+                .child(Button::new("Sign in", move |s| {
                     let username: ViewRef<EditView> = s.find_name("username").unwrap();
                     let password: ViewRef<EditView> = s.find_name("password").unwrap();
                     let userdata = AuthRequest {
@@ -74,7 +86,9 @@ async fn main() {
                     };
                     let mut status: ViewRef<TextView> = s.find_name("status").unwrap();
                     if userdata.is_valid() {
-                        match ureq::post("http://localhost:3000/signin").send_json(&userdata) {
+                        match ureq::post(&format!("http://{}/signin", from_env::<Options>().host))
+                            .send_json(&userdata)
+                        {
                             Ok(response) => s.set_user_data(response.into_string().unwrap()),
                             Err(err) => match err.into_response() {
                                 Some(response) => {
@@ -95,13 +109,19 @@ async fn main() {
     while siv.is_running() {
         siv.step();
         if let Some(token) = siv.take_user_data::<String>() {
-            connect(&mut siv, token).await.expect("failed \"connect\"");
+            connect(&mut siv, token, &host)
+                .await
+                .expect("failed \"connect\"");
         }
     }
 }
 
-async fn connect(siv: &mut CursiveRunner<CursiveRunnable>, token: String) -> Result<()> {
-    let (mut ws_stream, _) = connect_async("ws://localhost:3000/connect").await?;
+async fn connect(
+    siv: &mut CursiveRunner<CursiveRunnable>,
+    token: String,
+    host: &str,
+) -> Result<()> {
+    let (mut ws_stream, _) = connect_async(format!("ws://{}/connect", host)).await?;
     ws_stream.send(Message::Text(token)).await?;
     let (mut ws_tx, mut ws_rx) = ws_stream.split();
     let (sender, mut receiver) = mpsc::unbounded_channel::<ChannelMessage>();
