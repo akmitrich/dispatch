@@ -1,8 +1,8 @@
 use crate::{channel::Channel, channelmessage::ChannelMessage, userconnection::UserConnection};
 use anyhow::Result;
 use jwt_simple::prelude::HS256Key;
-use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::{collections::HashMap, env, sync::Arc};
+use sqlx::{migrate, postgres::PgPoolOptions, PgPool};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
 pub type ConnectionsPool = Arc<RwLock<HashMap<String, UserConnection>>>;
@@ -17,11 +17,12 @@ pub struct Context {
 impl Context {
     pub async fn create() -> Result<Self> {
         let key = HS256Key::generate();
-        let database_url = env::var("DATABASE_URL")?;
+        let database_url = std::env::var("DATABASE_URL")?;
         let pg_pool = PgPoolOptions::new()
             .max_connections(10)
             .connect(&database_url)
             .await?;
+        migrate!().run(&pg_pool).await?;
         let connections = Arc::new(RwLock::new(HashMap::new()));
         let channel = Channel::new(pg_pool.clone(), connections.clone()).await?;
         Ok(Self {
@@ -45,7 +46,6 @@ impl Context {
         preload.into_iter().for_each(|msg| connection.send(msg));
         lock.insert(username.to_string(), connection);
         Ok(())
-
     }
     pub async fn unplug(&mut self, username: &str) {
         self.connections
