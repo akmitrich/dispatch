@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         target: [x86_64-unknown-linux-gnu]
@@ -18,11 +18,12 @@ jobs:
         with:
           toolchain: stable
       - name: Build binary
-        run: cargo build --release --target ${{ matrix.target }} -p frontend
+        run: cargo build -p frontend --release --target ${{ matrix.target }}
+        run: mv target/${{ matrix.target }}/release/frontend target/${{ matrix.target }}/release/dispatch
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           name: dispatch
-          files: target/${{ matrix.target }}/release/frontend
+          files: target/${{ matrix.target }}/release/dispatch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
