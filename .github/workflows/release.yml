@@ -24,7 +24,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: dispatch
           files: target/${{ matrix.target }}/release/dispatch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
