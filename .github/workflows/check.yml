@@ -1,7 +1,7 @@
 name: Check Rust code
 on:
   push:
-    path:
+    paths:
       - 'backend/**'
       - 'frontend/**'
 jobs:

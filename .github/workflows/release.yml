@@ -18,8 +18,9 @@ jobs:
         with:
           toolchain: stable
       - name: Build binary
-        run: cargo build -p frontend --release --target ${{ matrix.target }}
-        run: mv target/${{ matrix.target }}/release/frontend target/${{ matrix.target }}/release/dispatch
+        run: | 
+          cargo build -p frontend --release --target ${{ matrix.target }}
+          mv target/${{ matrix.target }}/release/frontend target/${{ matrix.target }}/release/dispatch
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
