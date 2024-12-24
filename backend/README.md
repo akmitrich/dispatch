@@ -1,6 +1,6 @@
-# `BACKEND`
+# `Backend`
 
-Предоставляет `REST API` и `WebSocket API` для авторизации пользователей и обмена сообщениями. Включает эндпоинты для регистрации, входа в систему и подключения через `WebSocket`, а также использует базу данных `PostgreSQL` для хранения данных.
+Предоставляет `REST API` и `WebSocket API` для авторизации пользователей и обмена сообщениями, написанные на Rust с использованием библиотек `tokio` и `tokio-tungstenite`. Включает эндпоинты для регистрации, входа в систему и подключения через `WebSocket`, а также использует базу данных `PostgreSQL` для хранения данных.
 
 ## **`Endpoints`**
 ### **`POST /signin`**
@@ -89,8 +89,8 @@ POSTGRES_PASSWORD
 POSTGRES_DB
 ```
 
-### **`Build and Run`**
-Используйте `Docker Compose` для сборки и запуска приложения:
+### **`Build and Deployment`**
+Используйте `Docker Compose` для сборки и запуска:
 
 ```bash
 docker-compose up --build -d
