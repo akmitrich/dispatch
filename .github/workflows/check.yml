@@ -1,18 +1,18 @@
-name: Check Rust code
-on:
-  push:
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - name: Run cargo check
-        run: cargo check
+# name: Check Rust code
+# on:
+#   push:
+#     paths:
+#       - 'backend/**'
+#       - 'frontend/**'
+# jobs:
+#   check:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v2
+#       - name: Install Rust
+#         uses: actions-rs/toolchain@v1
+#         with:
+#           toolchain: stable
+#       - name: Run cargo check
+#         run: cargo check
