@@ -1,7 +1,6 @@
 # `Backend`
 
-## `Overview`
-Предоставляет `REST API` и `WebSocket API` для авторизации пользователей и обмена сообщениями. Она включает эндпоинты для входа, регистрации и подключения через WebSocket, а также использует базу данных `PostgreSQL` для хранения данных.
+Предоставляет `REST API` и `WebSocket API` для авторизации пользователей и обмена сообщениями. Включает эндпоинты для регистрации, входа в систему и подключения через `WebSocket`, а также использует базу данных `PostgreSQL` для хранения данных.
 
 ## **`Endpoints`**
 ### **`POST /signin`**
@@ -15,7 +14,7 @@
 **`Responses`**
   - `200 OK `
     - **Описание:** Авторизация прошла успешно
-    - **Тело:** `JWT`
+    - **Тело:** `JWT` (JSON Web Token)
   - `409 Conflict`
     - **Описание:** Неверный формат запроса
     - **Тело:** `Wrong format`
@@ -52,12 +51,12 @@
 ### **`GET /connect`**  
 `Upgrade: websocket`  
 
-**Первое сообщение:** `JWT`.  
+**Первое сообщение:** `JWT` (JSON Web Token).  
 
 **`Responses`**  
 - **Подключение установлено**    
 - **Подключение закрыто:**  
-  - **Описание** Неверный или истекший `JWT`.  
+  - **Описание:** Неверный или истекший `JWT` (JSON Web Token).  
 
 ---
 
@@ -79,20 +78,19 @@ CREATE TABLE IF NOT EXISTS messages (
     timestamp BIGINT NOT NULL
 );
 ```
----
 
 ## **`Setup`**
 
-### **`Environment Configuration`**
-В файле .env необходимо указать следующие значения:
+### **`Environments`**
+В файле `.env` нужно указать свои значения вместо `default` для следующих переменных:
 ```bash
-POSTGRES_USER=default
-POSTGRES_PASSWORD=default
-POSTGRES_DB=default
+POSTGRES_USER
+POSTGRES_PASSWORD
+POSTGRES_DB
 ```
 
-### **`Run the Application`**
-Используйте Docker Compose для сборки и запуска приложения:
+### **`Build and Run`**
+Используйте `Docker Compose` для сборки и запуска приложения:
 
 ```bash
 docker-compose up --build -d
